@@ -1,4 +1,4 @@
-# stylespeak
+# StyleSpeak
 
 A companion MCP server and CLI to [stylesafe](https://www.npmjs.com/package/stylesafe) that makes CSS legible to AI agents — resolving cascade, tracing properties, and explaining what applies and why before an agent touches a single line of styles.
 
