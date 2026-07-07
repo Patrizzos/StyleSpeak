@@ -1,0 +1,5 @@
+node_modules/
+.vscode/mcp.json
+*.log
+mcp-publisher.exe
+server.json

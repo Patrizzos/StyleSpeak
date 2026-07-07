@@ -1,0 +1,23 @@
+{
+  "name": "stylescope",
+  "version": "0.1.0",
+  "description": "MCP server and CLI that makes CSS legible to AI agents — resolves cascade, traces properties, explains what applies and why.",
+  "main": "src/server.js",
+  "bin": {
+    "stylescope": "src/server.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/run.js"
+  },
+  "keywords": ["mcp", "css", "tailwind", "cascade", "agent", "ai", "devtools"],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

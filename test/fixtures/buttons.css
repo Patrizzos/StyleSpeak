@@ -1,0 +1,28 @@
+.btn {
+  display: inline-block;
+  padding: 8px 16px;
+  color: white;
+  background-color: blue;
+  font-size: 14px;
+}
+
+.btn.primary {
+  background-color: darkblue;
+  font-weight: bold;
+}
+
+#header .btn {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.sidebar .btn.primary {
+  background-color: green;
+}
+
+@media (max-width: 768px) {
+  .btn {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}

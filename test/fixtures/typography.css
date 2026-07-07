@@ -1,0 +1,19 @@
+body {
+  color: #333;
+  font-size: 16px;
+  font-family: sans-serif;
+}
+
+h1, h2, h3 {
+  color: #111;
+  font-weight: bold;
+}
+
+.card-title {
+  color: #222;
+  font-size: 18px;
+}
+
+.sidebar .card-title {
+  color: #555;
+}
