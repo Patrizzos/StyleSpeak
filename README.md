@@ -1,10 +1,10 @@
-# stylescope
+# stylespeak
 
 A companion MCP server and CLI to [stylesafe](https://www.npmjs.com/package/stylesafe) that makes CSS legible to AI agents — resolving cascade, tracing properties, and explaining what applies and why before an agent touches a single line of styles.
 
 ## The problem
 
-AI coding agents write CSS without being able to see its effect. They modify a rule, assume it worked, and move on — unaware that a higher-specificity rule elsewhere already overrides it, or that a combinator rule in another file is silently winning. stylescope gives agents a structured knowledge layer to consult *before* making changes.
+AI coding agents write CSS without being able to see its effect. They modify a rule, assume it worked, and move on — unaware that a higher-specificity rule elsewhere already overrides it, or that a combinator rule in another file is silently winning. stylespeak gives agents a structured knowledge layer to consult *before* making changes.
 
 ## What it does
 
@@ -21,20 +21,20 @@ Given a property name and a set of files, returns every rule that sets it, group
 ### As a CLI tool
 
 ```bash
-npm install -g stylescope
+npm install -g stylespeak
 ```
 
 Resolve what applies to a selector:
 ```bash
-stylescope resolve ".btn.primary" src/styles/main.css
-stylescope resolve "#header a" src/styles/base.css src/styles/header.css
-stylescope resolve ".card-title" --projectRoot src/styles
+stylespeak resolve ".btn.primary" src/styles/main.css
+stylespeak resolve "#header a" src/styles/base.css src/styles/header.css
+stylespeak resolve ".card-title" --projectRoot src/styles
 ```
 
 Trace a property across files:
 ```bash
-stylescope trace "color" src/styles/main.css
-stylescope trace "background-color" --projectRoot src/styles
+stylespeak trace "color" src/styles/main.css
+stylespeak trace "background-color" --projectRoot src/styles
 ```
 
 ### As an MCP server
@@ -44,9 +44,9 @@ Add to your MCP client config (Cursor: `.cursor/mcp.json`, VS Code: `.vscode/mcp
 ```json
 {
   "mcpServers": {
-    "stylescope": {
+    "stylespeak": {
       "command": "node",
-      "args": ["/absolute/path/to/stylescope/src/server.js"]
+      "args": ["/absolute/path/to/stylespeak/src/server.js"]
     }
   }
 }
@@ -59,7 +59,7 @@ Once connected, agents can call:
 ## Example output
 
 ```bash
-stylescope resolve ".btn.primary" src/styles/buttons.css
+stylespeak resolve ".btn.primary" src/styles/buttons.css
 ```
 
 ```json
@@ -91,7 +91,7 @@ stylescope resolve ".btn.primary" src/styles/buttons.css
 
 ## Confidence levels
 
-Since stylescope performs static analysis without a real DOM, every resolved property carries a confidence level:
+Since stylespeak performs static analysis without a real DOM, every resolved property carries a confidence level:
 
 | Level | Meaning |
 |---|---|
@@ -115,17 +115,17 @@ Both commands accept:
 - `--projectRoot <dir>` to analyze all CSS/SCSS files in a directory recursively
 
 ```bash
-stylescope resolve ".btn" src/main.css src/components.css
-stylescope trace "padding" --projectRoot src/styles
+stylespeak resolve ".btn" src/main.css src/components.css
+stylespeak trace "padding" --projectRoot src/styles
 ```
 
 ## How it pairs with stylesafe
 
 **stylesafe** catches problems in your CSS — conflicts, dead rules, Tailwind clashes — before they ship.
 
-**stylescope** explains your CSS — resolving cascade, tracing properties, mapping what applies and why — so agents understand before they act.
+**stylespeak** explains your CSS — resolving cascade, tracing properties, mapping what applies and why — so agents understand before they act.
 
-Use stylesafe as a post-edit check. Use stylescope as a pre-edit consultation. Together they give AI coding agents a complete feedback loop on styles.
+Use stylesafe as a post-edit check. Use stylespeak as a pre-edit consultation. Together they give AI coding agents a complete feedback loop on styles.
 
 ## GitHub Actions
 
@@ -135,15 +135,15 @@ name: style check
 on: [pull_request]
 
 jobs:
-  stylescope:
+  stylespeak:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install -g stylescope
-      - run: stylescope trace "color" --projectRoot src/styles
+      - run: npm install -g stylespeak
+      - run: stylespeak trace "color" --projectRoot src/styles
 ```
 
 ## Architecture

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * stylescope — MCP server + CLI
+ * stylespeak — MCP server + CLI
  *
  * MCP mode: reads JSON-RPC from stdin, exposes two tools:
  *   resolve_styles  — what CSS applies to a selector, who wins, who loses
@@ -95,7 +95,7 @@ function handleRequest(req) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'stylescope', version: '0.1.0' },
+        serverInfo: { name: 'stylespeak', version: '0.1.0' },
       },
     });
   }
@@ -133,7 +133,7 @@ function runCLI(args) {
   const command = args[0];
 
   if (!command || command === '--help' || command === '-h') {
-    console.log('stylescope — CSS knowledge layer for AI agents\n');
+    console.log('stylespeak — CSS knowledge layer for AI agents\n');
     console.log('Usage:');
     console.log('  node server.js resolve <selector> [file...] [--projectRoot <dir>]');
     console.log('  node server.js trace <property> [file...] [--projectRoot <dir>]\n');

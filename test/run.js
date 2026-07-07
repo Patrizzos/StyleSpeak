@@ -59,7 +59,7 @@ function run() {
   const noProperty = traceProperty({ files: fixtures });
   assert.ok(noProperty.error, 'should return error when property missing');
 
-  console.log('stylescope regression checks passed');
+  console.log('stylespeak regression checks passed');
 }
 
 run();
