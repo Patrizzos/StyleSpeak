@@ -4,6 +4,8 @@ const { resolveStyles } = require('../src/resolveStyles');
 const { traceProperty } = require('../src/traceProperty');
 const { matchSelector } = require('../src/selectorMatcher');
 const { calculateSpecificity, specificityToString } = require('../src/specificity');
+const { buildVariableMap, enrichValue, containsVar } = require('../src/variableResolver');
+const { buildCSSOM } = require('../src/cssomBuilder');
 
 const fixtures = [
   path.join(__dirname, 'fixtures', 'buttons.css'),
@@ -58,6 +60,61 @@ function run() {
 
   const noProperty = traceProperty({ files: fixtures });
   assert.ok(noProperty.error, 'should return error when property missing');
+
+  // ── variable resolver unit tests ──────────────────────────────────────────
+  const varFixture = path.join(__dirname, 'fixtures', 'variables.css');
+  const varCSOM = buildCSSOM([varFixture]);
+  const varMap = varCSOM.variableMap;
+
+  assert.ok(varMap.has('--color-primary'), 'variable map should contain --color-primary');
+  assert.ok(varMap.has('--spacing-md'), 'variable map should contain --spacing-md');
+  assert.ok(varMap.has('--btn-color'), 'variable map should contain --btn-color (chained)');
+
+  // simple resolution
+  const simpleEnriched = enrichValue('var(--color-primary)', varMap, '.btn');
+  assert.ok(simpleEnriched, 'should return enriched value for var(--color-primary)');
+  assert.strictEqual(simpleEnriched.resolvedValue, '#2563eb', 'should resolve --color-primary to #2563eb');
+  assert.ok(simpleEnriched.variableChain.length > 0, 'should have a variable chain');
+
+  // chained resolution: --btn-color: var(--color-primary) -> #2563eb
+  const chainedEnriched = enrichValue('var(--btn-color)', varMap, '.btn-text');
+  assert.ok(chainedEnriched, 'should return enriched value for chained var');
+  assert.strictEqual(chainedEnriched.resolvedValue, '#2563eb', 'chained --btn-color should resolve to #2563eb');
+  assert.ok(chainedEnriched.variableChain.length >= 2, 'chained var should have at least 2 steps in chain');
+
+  // fallback resolution
+  const fallbackEnriched = enrichValue('var(--color-undefined, #ff0000)', varMap, '.btn-fallback');
+  assert.ok(fallbackEnriched, 'should return enriched value for var with fallback');
+  assert.strictEqual(fallbackEnriched.resolvedValue, '#ff0000', 'undefined var should use fallback value');
+
+  // non-var value returns null
+  const noVar = enrichValue('#2563eb', varMap, '.btn');
+  assert.strictEqual(noVar, null, 'non-var value should return null from enrichValue');
+
+  // containsVar
+  assert.ok(containsVar('var(--color-primary)'), 'should detect var()');
+  assert.ok(!containsVar('#2563eb'), 'should not detect var() in plain value');
+
+  // resolve_styles includes variables map
+  const varResolved = resolveStyles({ selector: '.btn', files: [varFixture] });
+  assert.ok(varResolved.variables, 'resolve_styles should include variables map');
+  assert.ok(varResolved.variables['--color-primary'], 'variables map should include --color-primary');
+  assert.strictEqual(varResolved.variables['--color-primary'].resolvedValue, '#2563eb', 'variable summary should show resolved value');
+
+  // winner should have resolvedValue for var() properties
+  const bgColor = varResolved.properties['background-color'];
+  assert.ok(bgColor, 'should resolve background-color for .btn');
+  assert.strictEqual(bgColor.winner.value, 'var(--color-primary)', 'winner value should be raw var()');
+  assert.strictEqual(bgColor.winner.resolvedValue, '#2563eb', 'winner resolvedValue should be resolved');
+
+  // media context conditionals
+  const primaryVar = varResolved.variables['--color-primary'];
+  assert.ok(primaryVar.conditionalValues, '--color-primary should have conditional media values');
+
+  // trace_property includes variables
+  const varTraced = traceProperty({ property: 'background-color', files: [varFixture] });
+  assert.ok(varTraced.variables, 'trace_property should include variables map');
+  assert.ok(varTraced.occurrences[0].resolvedValue, 'trace occurrence should have resolvedValue');
 
   console.log('stylespeak regression checks passed');
 }

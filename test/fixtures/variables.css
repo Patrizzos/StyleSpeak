@@ -1,0 +1,41 @@
+/* variables.css — test fixture for CSS custom property resolution */
+
+:root {
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+  --color-text: #111827;
+  --color-muted: #6b7280;
+  --spacing-md: 16px;
+  --btn-color: var(--color-primary);
+}
+
+/* scoped override */
+.dark-theme {
+  --color-primary: #60a5fa;
+  --color-text: #f9fafb;
+}
+
+/* media-context override */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #93c5fd;
+    --color-text: #f9fafb;
+  }
+}
+
+.btn {
+  background-color: var(--color-primary);
+  color: white;
+  padding: var(--spacing-md);
+  font-size: 14px;
+}
+
+.btn-text {
+  /* chained variable */
+  color: var(--btn-color);
+}
+
+.btn-fallback {
+  /* variable with fallback */
+  color: var(--color-undefined, #ff0000);
+}

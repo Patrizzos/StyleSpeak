@@ -163,6 +163,5 @@ Zero external dependencies. Requires Node.js 18+.
 
 ## Roadmap
 
-- **v0.2** — CSS custom property (variable) resolution, CSS Modules scope awareness
-- **v0.3** — AST component graph analysis for more accurate selector matching without a DOM
+- **v0.3** — CSS Modules scope awareness, AST component graph analysis for more accurate selector matching without a DOM
 - **v1.0** — Chrome DevTools Protocol integration for live cascade resolution against a running browser

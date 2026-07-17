@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseCSS } = require('./cssParser');
 const { calculateSpecificity, compareSpecificity, specificityToString } = require('./specificity');
+const { buildVariableMap, enrichValue, buildVariableSummary } = require('./variableResolver');
 
 const STYLE_EXTENSIONS = new Set(['.css', '.scss']);
 
@@ -45,7 +46,8 @@ function buildCSSOM(filePaths) {
     }
   }
 
-  return { rules: flatRules, fileCount: filePaths.length };
+  const variableMap = buildVariableMap(flatRules);
+  return { rules: flatRules, fileCount: filePaths.length, variableMap };
 }
 
 /**
@@ -135,4 +137,23 @@ function resolveCascade(matchingRules, prop) {
   };
 }
 
-module.exports = { buildCSSOM, discoverStyleFiles, resolveCascade, specificityToString };
+/**
+ * Enriches a cascade resolution result with variable resolution data.
+ * Adds resolvedValue, variableChain, and conditionalValues to winner and overridden entries.
+ */
+function enrichResolution(resolution, variableMap, selectorContext) {
+  if (!resolution) return null;
+
+  function enrichEntry(entry) {
+    const enriched = enrichValue(entry.value, variableMap, selectorContext);
+    if (!enriched) return entry;
+    return { ...entry, ...enriched };
+  }
+
+  return {
+    winner: enrichEntry(resolution.winner),
+    overridden: resolution.overridden.map(enrichEntry),
+  };
+}
+
+module.exports = { buildCSSOM, discoverStyleFiles, resolveCascade, enrichResolution, specificityToString, buildVariableSummary };

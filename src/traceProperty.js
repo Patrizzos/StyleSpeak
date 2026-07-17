@@ -8,7 +8,7 @@
  */
 
 const path = require('path');
-const { buildCSSOM, discoverStyleFiles, resolveCascade, specificityToString } = require('./cssomBuilder');
+const { buildCSSOM, discoverStyleFiles, resolveCascade, enrichResolution, specificityToString, buildVariableSummary } = require('./cssomBuilder');
 const { matchSelector } = require('./selectorMatcher');
 
 function traceProperty({ property, files = [], projectRoot = null }) {
@@ -19,6 +19,7 @@ function traceProperty({ property, files = [], projectRoot = null }) {
   if (filePaths.length === 0) return { error: 'No CSS files found. Provide files[] or projectRoot.' };
 
   const cssom = buildCSSOM(filePaths);
+  const { variableMap } = cssom;
 
   // Find every rule that sets this property
   const occurrences = cssom.rules.filter(rule =>
@@ -59,10 +60,11 @@ function traceProperty({ property, files = [], projectRoot = null }) {
 
     if (group.length > 1) {
       const resolution = resolveCascade(group, property.toLowerCase());
+      const enriched = resolution ? enrichResolution(resolution, variableMap, occurrences[i].selector) : null;
       groups.push({
         selectors: group.map(r => r.selector),
-        winner: resolution ? resolution.winner : null,
-        overridden: resolution ? resolution.overridden : [],
+        winner: enriched ? enriched.winner : null,
+        overridden: enriched ? enriched.overridden : [],
       });
     }
   }
@@ -70,9 +72,17 @@ function traceProperty({ property, files = [], projectRoot = null }) {
   // Format all occurrences for output
   const formatted = occurrences.map(rule => {
     const decl = rule.declarations.find(d => d.prop === property.toLowerCase());
+    const enriched = enrichResolution(
+      { winner: { value: decl.value, important: decl.important, selector: rule.selector, specificity: specificityToString(rule.specificity), source: rule.source, mediaContext: rule.mediaContext }, overridden: [] },
+      variableMap,
+      rule.selector
+    );
     return {
       selector: rule.selector,
       value: decl.value,
+      resolvedValue: enriched.winner.resolvedValue,
+      variableChain: enriched.winner.variableChain,
+      conditionalValues: enriched.winner.conditionalValues,
       important: decl.important,
       specificity: specificityToString(rule.specificity),
       source: rule.source,
@@ -90,6 +100,7 @@ function traceProperty({ property, files = [], projectRoot = null }) {
     },
     occurrences: formatted,
     competingGroups: groups,
+    variables: buildVariableSummary(variableMap, null),
     summary: `"${property}" is set ${occurrences.length} time(s) across ${affectedFiles.join(', ')}.${groups.length > 0 ? ` ${groups.length} competing group(s) found where rules override each other.` : ''}`,
     agentNote: groups.length > 0
       ? `Changing "${property}" in one rule may have no effect if a competing rule with higher specificity or later source order wins. Review competing groups before editing.`

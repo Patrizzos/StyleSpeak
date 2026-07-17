@@ -1,7 +1,7 @@
 {
   "name": "@patrizzos/stylespeak",
   "mcpName": "io.github.Patrizzos/stylespeak",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server and CLI that makes CSS legible to AI agents — resolves cascade, traces properties, explains what applies and why.",
   "main": "src/server.js",
   "repository": {
