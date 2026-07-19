@@ -1,0 +1,17 @@
+/* Card.module.css — different module, .btn here cannot conflict with Button.module.css */
+.card {
+  background: white;
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.btn {
+  /* same class name as Button.module.css but locally scoped — no real conflict */
+  background-color: green;
+  padding: 4px 8px;
+}
+
+.title {
+  font-size: 18px;
+  color: #111;
+}

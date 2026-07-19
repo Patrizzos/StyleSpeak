@@ -13,6 +13,8 @@
  * 'none' means no meaningful relationship — skip.
  */
 
+const { graphConfirmsAncestry } = require('./astComponentGraph');
+
 function parseCompound(selector) {
   // Split on combinators, return rightmost compound selector's tokens
   const parts = selector.trim().split(/(?<=[^\s>+~])\s*[\s>+~]+\s*/);
@@ -63,4 +65,36 @@ function matchSelector(ruleSelector, querySelector) {
   return 'none';
 }
 
-module.exports = { matchSelector, parseCompound };
+/**
+ * Graph-aware selector matching. Same as matchSelector but upgrades
+ * 'possible' to 'likely' when the AST component graph confirms the
+ * ancestor relationship actually exists in the component tree.
+ */
+function matchSelectorWithGraph(ruleSelector, querySelector, ancestorMap) {
+  const base = matchSelector(ruleSelector, querySelector);
+  if (base !== 'possible' || !ancestorMap) return base;
+
+  // Extract the ancestor token from the rule selector (the non-rightmost part)
+  const rule = parseCompound(ruleSelector);
+  const query = parseCompound(querySelector);
+
+  if (!rule.hasCombinator) return base;
+
+  // Check if any ancestor class in the rule is confirmed as an ancestor
+  // of any class in the query by the component graph
+  const ruleParts = ruleSelector.trim().split(/(?<=[^\s>+~])\s*[\s>+~]+\s*/);
+  const ancestorSelector = ruleParts.slice(0, -1).join(' ');
+  const ancestorTokens = parseCompound(ancestorSelector).tokens;
+
+  for (const ancestorClass of ancestorTokens) {
+    for (const queryClass of query.tokens) {
+      if (graphConfirmsAncestry(ancestorClass, queryClass, ancestorMap)) {
+        return 'likely';
+      }
+    }
+  }
+
+  return base;
+}
+
+module.exports = { matchSelector, matchSelectorWithGraph, parseCompound };

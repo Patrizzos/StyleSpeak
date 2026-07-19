@@ -116,6 +116,61 @@ function run() {
   assert.ok(varTraced.variables, 'trace_property should include variables map');
   assert.ok(varTraced.occurrences[0].resolvedValue, 'trace occurrence should have resolvedValue');
 
+  // ── CSS Modules ───────────────────────────────────────────────────────────
+  const { isCSSModule, isGlobalInModule, tagModuleRules, shouldSuppressCrossModuleConflict } = require('../src/cssModulesAnalyzer');
+
+  assert.ok(isCSSModule('Button.module.css'), 'should detect .module.css');
+  assert.ok(isCSSModule('Card.module.scss'), 'should detect .module.scss');
+  assert.ok(!isCSSModule('styles.css'), 'should not flag regular css as module');
+
+  assert.ok(isGlobalInModule(':root'), 'should treat :root as global in module');
+  assert.ok(isGlobalInModule('*'), 'should treat * as global in module');
+  assert.ok(!isGlobalInModule('.btn'), 'should treat .btn as locally scoped');
+
+  const btnFixture = path.join(__dirname, 'fixtures', 'Button.module.css');
+  const cardFixture = path.join(__dirname, 'fixtures', 'Card.module.css');
+  const moduleCSSOM = buildCSSOM([btnFixture, cardFixture]);
+  const btnRule = moduleCSSOM.rules.find(r => r.selector === '.btn' && r.source.file === btnFixture);
+  const cardBtnRule = moduleCSSOM.rules.find(r => r.selector === '.btn' && r.source.file === cardFixture);
+  assert.ok(btnRule && btnRule.cssModule === true, '.btn from module file should be tagged cssModule: true');
+  assert.ok(btnRule && btnRule.localScope === true, '.btn from module file should be locally scoped');
+  assert.ok(shouldSuppressCrossModuleConflict(btnRule, cardBtnRule), 'cross-module .btn conflict should be suppressed');
+  assert.ok(!shouldSuppressCrossModuleConflict(btnRule, btnRule), 'same-file conflict should not be suppressed');
+
+  // ── SCSS nesting ──────────────────────────────────────────────────────
+  const { expandSCSS, combineSelectors } = require('../src/scssNestingExpander');
+
+  assert.strictEqual(combineSelectors('.btn', '&:hover'), '.btn:hover', '& reference should combine correctly');
+  assert.strictEqual(combineSelectors('.btn', '&.sm'), '.btn.sm', '& modifier should combine correctly');
+  assert.strictEqual(combineSelectors('.card', '.title'), '.card .title', 'descendant should add space');
+
+  const scssFixture = path.join(__dirname, 'fixtures', 'nested.scss');
+  const scssCSSOM = buildCSSOM([scssFixture]);
+  const cardTitleRule = scssCSSOM.rules.find(r => r.selector === '.card .title');
+  const cardHoverRule = scssCSSOM.rules.find(r => r.selector === '.card:hover');
+  const btnHoverRule = scssCSSOM.rules.find(r => r.selector === '.btn:hover');
+  const btnSmRule = scssCSSOM.rules.find(r => r.selector === '.btn.sm');
+  assert.ok(cardTitleRule, 'nested .card .title should be expanded');
+  assert.ok(cardHoverRule, 'nested &:hover should expand to .card:hover');
+  assert.ok(btnHoverRule, 'nested .btn &:hover should expand to .btn:hover');
+  assert.ok(btnSmRule, 'nested .btn &.sm should expand to .btn.sm');
+
+  // ── AST component graph ───────────────────────────────────────────────
+  const { buildComponentGraph, graphConfirmsAncestry, extractComponentInfo } = require('../src/astComponentGraph');
+
+  const jsxFixture = path.join(__dirname, 'fixtures', 'components.jsx');
+  if (require('fs').existsSync(jsxFixture)) {
+    const graphResult = buildComponentGraph([jsxFixture]);
+    assert.ok(graphResult.componentMap, 'should build component map');
+    assert.ok(graphResult.ancestorMap, 'should build ancestor map');
+  }
+
+  // graph-aware matching upgrades possible to likely
+  const { matchSelectorWithGraph } = require('../src/selectorMatcher');
+  const fakeAncestorMap = new Map([['.btn', new Set(['.sidebar'])]]);
+  assert.strictEqual(matchSelectorWithGraph('.sidebar .btn', '.btn', fakeAncestorMap), 'likely', 'graph should upgrade possible to likely when ancestry confirmed');
+  assert.strictEqual(matchSelectorWithGraph('.nav .btn', '.btn', fakeAncestorMap), 'possible', 'graph should leave possible when ancestry not confirmed');
+
   console.log('stylespeak regression checks passed');
 }
 

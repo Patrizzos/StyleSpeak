@@ -41,6 +41,11 @@ const TOOLS = [
           type: 'string',
           description: 'Optional: path to a project root. All CSS/SCSS files will be discovered recursively.',
         },
+        componentFiles: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional: absolute paths to JSX/TSX files. When provided, builds an AST component graph to upgrade selector confidence from possible to likely where ancestry is confirmed.',
+        },
       },
       required: ['selector'],
     },
@@ -95,7 +100,7 @@ function handleRequest(req) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'stylespeak', version: '0.1.0' },
+        serverInfo: { name: 'stylespeak', version: '0.3.0' },
       },
     });
   }

@@ -9,23 +9,31 @@
  */
 
 const path = require('path');
-const { buildCSSOM, discoverStyleFiles, resolveCascade, enrichResolution, buildVariableSummary } = require('./cssomBuilder');
-const { matchSelector } = require('./selectorMatcher');
+const { buildCSSOM, buildCSSOMWithGraph, discoverStyleFiles, resolveCascade, enrichResolution, buildVariableSummary } = require('./cssomBuilder');
+const { matchSelector, matchSelectorWithGraph } = require('./selectorMatcher');
 
-function resolveStyles({ selector, files = [], projectRoot = null }) {
+function resolveStyles({ selector, files = [], projectRoot = null, componentFiles = [] }) {
   if (!selector) return { error: 'selector is required' };
 
   let filePaths = [...files];
   if (projectRoot) filePaths.push(...discoverStyleFiles(projectRoot));
   if (filePaths.length === 0) return { error: 'No CSS files found. Provide files[] or projectRoot.' };
 
-  const cssom = buildCSSOM(filePaths);
-  const { variableMap } = cssom;
+  const cssom = componentFiles.length > 0
+    ? buildCSSOMWithGraph(filePaths, componentFiles)
+    : buildCSSOM(filePaths);
+  const { variableMap, graph } = cssom;
+  const ancestorMap = graph ? graph.ancestorMap : null;
+
+  const matchFn = (ruleSelector, querySelector) =>
+    ancestorMap
+      ? matchSelectorWithGraph(ruleSelector, querySelector, ancestorMap)
+      : matchSelector(ruleSelector, querySelector);
 
   // Find all rules that could apply to this selector
   const matchingRules = [];
   for (const rule of cssom.rules) {
-    const confidence = matchSelector(rule.selector, selector);
+    const confidence = matchFn(rule.selector, selector);
     if (confidence !== 'none') {
       matchingRules.push({ ...rule, matchConfidence: confidence });
     }

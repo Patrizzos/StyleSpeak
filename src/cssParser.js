@@ -97,4 +97,14 @@ function parseCSS(cssText, filename = '<input>') {
   return rules;
 }
 
-module.exports = { parseCSS };
+const { expandSCSS } = require('./scssNestingExpander');
+
+const SCSS_EXTENSIONS = new Set(['.scss', '.sass']);
+
+function parseFile(cssText, filename) {
+  const ext = require('path').extname(filename || '').toLowerCase();
+  const text = SCSS_EXTENSIONS.has(ext) ? expandSCSS(cssText) : cssText;
+  return parseCSS(text, filename);
+}
+
+module.exports = { parseCSS, parseFile };

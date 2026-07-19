@@ -14,9 +14,11 @@
 
 const fs = require('fs');
 const path = require('path');
-const { parseCSS } = require('./cssParser');
+const { parseCSS, parseFile } = require('./cssParser');
 const { calculateSpecificity, compareSpecificity, specificityToString } = require('./specificity');
 const { buildVariableMap, enrichValue, buildVariableSummary } = require('./variableResolver');
+const { tagModuleRules, shouldSuppressCrossModuleConflict, enrichWithModuleInfo } = require('./cssModulesAnalyzer');
+const { buildComponentGraph, discoverComponentFiles } = require('./astComponentGraph');
 
 const STYLE_EXTENSIONS = new Set(['.css', '.scss']);
 
@@ -30,7 +32,7 @@ function buildCSSOM(filePaths) {
     if (!STYLE_EXTENSIONS.has(ext)) continue;
 
     const cssText = fs.readFileSync(filePath, 'utf8');
-    const rules = parseCSS(cssText, filePath);
+    const rules = parseFile(cssText, filePath);
 
     for (const rule of rules) {
       for (const selector of rule.selectors) {
@@ -46,8 +48,9 @@ function buildCSSOM(filePaths) {
     }
   }
 
-  const variableMap = buildVariableMap(flatRules);
-  return { rules: flatRules, fileCount: filePaths.length, variableMap };
+  const taggedRules = tagModuleRules(flatRules);
+  const variableMap = buildVariableMap(taggedRules);
+  return { rules: taggedRules, fileCount: filePaths.length, variableMap };
 }
 
 /**
@@ -156,4 +159,17 @@ function enrichResolution(resolution, variableMap, selectorContext) {
   };
 }
 
-module.exports = { buildCSSOM, discoverStyleFiles, resolveCascade, enrichResolution, specificityToString, buildVariableSummary };
+/**
+ * Graph-aware CSSOM builder. Accepts optional componentFiles (JSX/TSX paths)
+ * to build an AST component graph alongside the CSSOM. The graph is used by
+ * selectorMatcher to upgrade 'possible' confidence to 'likely'.
+ */
+function buildCSSOMWithGraph(filePaths, componentFiles = []) {
+  const cssom = buildCSSOM(filePaths);
+  const graph = componentFiles.length > 0
+    ? buildComponentGraph(componentFiles)
+    : { componentMap: new Map(), ancestorMap: new Map() };
+  return { ...cssom, graph };
+}
+
+module.exports = { buildCSSOM, buildCSSOMWithGraph, discoverStyleFiles, resolveCascade, enrichResolution, specificityToString, buildVariableSummary, shouldSuppressCrossModuleConflict };
