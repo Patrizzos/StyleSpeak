@@ -12,7 +12,7 @@ const fixtures = [
   path.join(__dirname, 'fixtures', 'typography.css'),
 ];
 
-function run() {
+async function run() {
   // ── specificity ────────────────────────────────────────────────────────────
   assert.deepStrictEqual(calculateSpecificity('#header'), [0,1,0,0], 'ID specificity');
   assert.deepStrictEqual(calculateSpecificity('.btn.primary'), [0,0,2,0], 'double class specificity');
@@ -171,7 +171,33 @@ function run() {
   assert.strictEqual(matchSelectorWithGraph('.sidebar .btn', '.btn', fakeAncestorMap), 'likely', 'graph should upgrade possible to likely when ancestry confirmed');
   assert.strictEqual(matchSelectorWithGraph('.nav .btn', '.btn', fakeAncestorMap), 'possible', 'graph should leave possible when ancestry not confirmed');
 
+  // ── live_resolve ────────────────────────────────────────────────────────
+  const { liveResolve } = require('../src/liveResolve');
+  const { CdpNotRunningError, discoverTabs, selectTab } = require('../src/cdpBridge');
+
+  // CdpNotRunningError should include actionable instructions for all platforms
+  const cdpErr = new CdpNotRunningError(9222);
+  assert.ok(cdpErr.message.includes('--remote-debugging-port'), 'error should include flag name');
+  assert.ok(cdpErr.message.includes('resolve_styles'), 'error should suggest fallback');
+  assert.ok(cdpErr.message.includes('Windows'), 'error should include Windows instructions');
+  assert.ok(cdpErr.message.includes('macOS'), 'error should include macOS instructions');
+  assert.strictEqual(cdpErr.code, 'CDP_NOT_RUNNING', 'error should have correct code');
+
+  // selectTab should pick by URL pattern
+  const fakeTabs = [
+    { id: '1', title: 'Home', url: 'http://localhost:3000/', type: 'page', webSocketDebuggerUrl: 'ws://localhost:9222/devtools/page/1' },
+    { id: '2', title: 'About', url: 'http://localhost:3000/about', type: 'page', webSocketDebuggerUrl: 'ws://localhost:9222/devtools/page/2' },
+  ];
+  assert.strictEqual(selectTab(fakeTabs, '/about').id, '2', 'selectTab should match by URL pattern');
+  assert.strictEqual(selectTab(fakeTabs, null).id, '1', 'selectTab should default to first tab');
+  assert.strictEqual(selectTab([], null), null, 'selectTab should return null for empty tab list');
+
+  // liveResolve should return CDP_NOT_RUNNING error when Chrome is not available
+  const liveResult = await liveResolve({ selector: '.btn', port: 19999 });
+  assert.ok(liveResult.error, 'liveResolve should return error when CDP not reachable');
+  assert.ok(liveResult.code === 'CDP_NOT_RUNNING' || liveResult.error.includes('Node'), 'error should be CDP or Node version');
+
   console.log('stylespeak regression checks passed');
 }
 
-run();
+run().catch(err => { console.error(err); process.exit(1); });

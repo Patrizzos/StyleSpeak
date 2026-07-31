@@ -209,4 +209,4 @@ Zero external dependencies. Requires Node.js 18+.
 
 - **v0.2** ✅ — CSS custom property resolution (simple, chained, fallback, scoped, media-context)
 - **v0.3** ✅ — SCSS nesting support, CSS Modules local scope awareness, AST component graph analysis
-- **v1.0** — Chrome DevTools Protocol integration for live cascade resolution against a running browser
+- **v1.0** ✅ — Chrome DevTools Protocol integration for live cascade resolution against a running browser

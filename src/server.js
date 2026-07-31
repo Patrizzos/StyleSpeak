@@ -13,6 +13,7 @@
 const readline = require('readline');
 const { resolveStyles } = require('./resolveStyles');
 const { traceProperty } = require('./traceProperty');
+const { liveResolve } = require('./liveResolve');
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -77,6 +78,33 @@ const TOOLS = [
       required: ['property'],
     },
   },
+  {
+    name: 'live_resolve',
+    description:
+      'Resolves CSS for a selector by querying a live running browser via Chrome DevTools Protocol (CDP). ' +
+      'Returns exact computed styles and every matched rule in cascade order — no static analysis, no heuristics, ' +
+      'confidence is always exact. Requires Chrome or any Chromium browser (Edge, Brave, Arc) running with ' +
+      '--remote-debugging-port=9222. Use this when you need ground truth. ' +
+      'Fall back to resolve_styles when no browser is running.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector to resolve against the live DOM, e.g. ".btn.primary", "#header a"',
+        },
+        port: {
+          type: 'number',
+          description: 'CDP port (default: 9222). Change if you started Chrome with a different port.',
+        },
+        tabUrl: {
+          type: 'string',
+          description: 'Optional URL substring to target a specific tab. If omitted, uses the first available tab.',
+        },
+      },
+      required: ['selector'],
+    },
+  },
 ];
 
 // ─── MCP server ──────────────────────────────────────────────────────────────
@@ -88,6 +116,7 @@ function send(message) {
 function runTool(name, args) {
   if (name === 'resolve_styles') return resolveStyles(args || {});
   if (name === 'trace_property') return traceProperty(args || {});
+  if (name === 'live_resolve') return liveResolve(args || {});
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -100,7 +129,7 @@ function handleRequest(req) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'stylespeak', version: '0.3.0' },
+        serverInfo: { name: 'stylespeak', version: '1.0.0' },
       },
     });
   }
