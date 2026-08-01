@@ -2,18 +2,22 @@
 /**
  * stylespeak — MCP server + CLI
  *
- * MCP mode: reads JSON-RPC from stdin, exposes two tools:
+ * MCP mode: exposes four tools:
  *   resolve_styles  — what CSS applies to a selector, who wins, who loses
  *   trace_property  — every rule setting a property, competing groups, blast radius
+ *   live_resolve    — exact resolution via Chrome DevTools Protocol
+ *   impact_preview  — blast radius of a proposed CSS change before making it
  *
  * CLI mode: node server.js resolve .btn src/styles/main.css
  *           node server.js trace color --projectRoot src
+ *           node server.js impact .btn background-color src/styles/main.css
  */
 
 const readline = require('readline');
 const { resolveStyles } = require('./resolveStyles');
 const { traceProperty } = require('./traceProperty');
 const { liveResolve } = require('./liveResolve');
+const { impactPreview } = require('./impactPreview');
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -105,6 +109,43 @@ const TOOLS = [
       required: ['selector'],
     },
   },
+  {
+    name: 'impact_preview',
+    description:
+      'Predicts the blast radius of a proposed CSS change before it is made. ' +
+      'Given a selector, property, and optional new value, returns every competing rule ' +
+      'in the codebase that would be affected — showing which selectors will see a different ' +
+      'value, which are shielded by higher specificity, which cascade relationships are uncertain, ' +
+      'and which downstream rules are affected through CSS variable chains or inheritance. ' +
+      'Works without a browser. Use this before making any CSS change to understand the full impact.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'The CSS selector you are about to change, e.g. ".btn", ":root"',
+        },
+        property: {
+          type: 'string',
+          description: 'The CSS property you are about to change, e.g. "background-color", "--color-primary"',
+        },
+        newValue: {
+          type: 'string',
+          description: 'Optional: the new value you plan to set. Enables before/after comparison in variable chain impacts.',
+        },
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Absolute paths to CSS/SCSS files to analyze.',
+        },
+        projectRoot: {
+          type: 'string',
+          description: 'Optional: path to a project root. All CSS/SCSS files will be discovered recursively.',
+        },
+      },
+      required: ['selector', 'property'],
+    },
+  },
 ];
 
 // ─── MCP server ──────────────────────────────────────────────────────────────
@@ -117,6 +158,7 @@ function runTool(name, args) {
   if (name === 'resolve_styles') return resolveStyles(args || {});
   if (name === 'trace_property') return traceProperty(args || {});
   if (name === 'live_resolve') return liveResolve(args || {});
+  if (name === 'impact_preview') return impactPreview(args || {});
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -129,7 +171,7 @@ function handleRequest(req) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'stylespeak', version: '1.0.0' },
+        serverInfo: { name: 'stylespeak', version: '1.1.0' },
       },
     });
   }
@@ -170,17 +212,22 @@ function runCLI(args) {
     console.log('stylespeak — CSS knowledge layer for AI agents\n');
     console.log('Usage:');
     console.log('  node server.js resolve <selector> [file...] [--projectRoot <dir>]');
-    console.log('  node server.js trace <property> [file...] [--projectRoot <dir>]\n');
+    console.log('  node server.js trace <property> [file...] [--projectRoot <dir>]');
+    console.log('  node server.js impact <selector> <property> [file...] [--projectRoot <dir>] [--newValue <value>]\n');
     console.log('Examples:');
     console.log('  node server.js resolve ".btn.primary" src/styles/main.css');
     console.log('  node server.js trace "color" --projectRoot src/styles');
-    console.log('  node server.js resolve "#header a" src/styles/base.css src/styles/header.css');
+    console.log('  node server.js impact ".btn" "background-color" src/styles/main.css --newValue "#ff0000"');
     return;
   }
 
   const projectRootIdx = args.indexOf('--projectRoot');
   const projectRoot = projectRootIdx !== -1 ? args[projectRootIdx + 1] : null;
-  const fileArgs = args.slice(1).filter(a => !a.startsWith('--') && a !== projectRoot);
+  const newValueIdx = args.indexOf('--newValue');
+  const newValue = newValueIdx !== -1 ? args[newValueIdx + 1] : null;
+  const fileArgs = args.slice(1).filter(a =>
+    !a.startsWith('--') && a !== projectRoot && a !== newValue
+  );
 
   let result;
   if (command === 'resolve') {
@@ -191,8 +238,13 @@ function runCLI(args) {
     const property = fileArgs[0];
     const files = fileArgs.slice(1);
     result = traceProperty({ property, files, projectRoot });
+  } else if (command === 'impact') {
+    const selector = fileArgs[0];
+    const property = fileArgs[1];
+    const files = fileArgs.slice(2);
+    result = impactPreview({ selector, property, newValue, files, projectRoot });
   } else {
-    console.error(`Unknown command: ${command}. Use resolve or trace.`);
+    console.error('Unknown command: ' + command + '. Use resolve, trace, or impact.');
     process.exit(1);
   }
 

@@ -197,6 +197,51 @@ async function run() {
   assert.ok(liveResult.error, 'liveResolve should return error when CDP not reachable');
   assert.ok(liveResult.code === 'CDP_NOT_RUNNING' || liveResult.error.includes('Node'), 'error should be CDP or Node version');
 
+  // ── impact_preview ───────────────────────────────────────────────────
+  const { impactPreview } = require('../src/impactPreview');
+
+  // changing background-color on .btn should detect .btn.primary as shielded
+  const impact1 = impactPreview({
+    selector: '.btn',
+    property: 'background-color',
+    newValue: '#ff0000',
+    files: fixtures,
+  });
+  assert.ok(!impact1.error, 'impact_preview should not error');
+  assert.ok(impact1.blastRadius, 'should return blastRadius');
+  assert.ok(impact1.impacts.length > 0, 'should find at least one impact');
+  assert.ok(impact1.riskLevel, 'should return riskLevel');
+  assert.ok(typeof impact1.safeToChange === 'boolean', 'should return safeToChange boolean');
+  assert.ok(impact1.summary, 'should return summary');
+  assert.ok(impact1.agentNote, 'should return agentNote');
+
+  // the direct value-change impact on .btn itself should always be present
+  const directImpact = impact1.impacts.find(i => i.type === 'value-change' && i.affectedSelector === '.btn');
+  assert.ok(directImpact, 'should include value-change impact for the changed selector itself');
+  assert.strictEqual(directImpact.newValue, '#ff0000', 'new value should be reflected in impact');
+
+  // changing --color-primary (variable) should surface variable downstream impacts
+  const impactVarFixture = path.join(__dirname, 'fixtures', 'variables.css');
+  const impact2 = impactPreview({
+    selector: ':root',
+    property: '--color-primary',
+    newValue: '#ff0000',
+    files: [impactVarFixture],
+  });
+  assert.ok(!impact2.error, 'variable impact_preview should not error');
+  assert.ok(impact2.change.isVariableChange === true, 'should flag as variable change');
+  assert.ok(impact2.variableImpacts.length > 0, 'should find variable downstream impacts');
+  const varImpact = impact2.variableImpacts.find(i => i.type === 'variable-downstream');
+  assert.ok(varImpact, 'should include variable-downstream impact');
+  assert.ok(varImpact.currentResolvedValue, 'should show current resolved value');
+  assert.ok(varImpact.newResolvedValue, 'should show new resolved value after change');
+
+  // missing required params should error
+  const noSelectorImpact = impactPreview({ property: 'color', files: fixtures });
+  assert.ok(noSelectorImpact.error, 'should error when selector missing');
+  const noPropertyImpact = impactPreview({ selector: '.btn', files: fixtures });
+  assert.ok(noPropertyImpact.error, 'should error when property missing');
+
   console.log('stylespeak regression checks passed');
 }
 

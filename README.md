@@ -1,6 +1,6 @@
 # StyleSpeak - MCP and CLI
 
-A companion MCP server and CLI to [stylesafe](https://www.npmjs.com/package/stylesafe) that makes CSS legible to AI agents — resolving cascade, tracing properties, explaining what applies and why, and resolving CSS custom properties before an agent touches a single line of styles.
+A companion MCP server and CLI to [stylesafe](https://www.npmjs.com/package/stylesafe) that makes CSS legible to AI agents — resolving cascade, tracing properties, predicting change impact, and explaining what applies and why before an agent touches a single line of styles.
 
 ## The problem
 
@@ -14,7 +14,15 @@ Given a selector and a set of files, returns every CSS property the selector wou
 
 **`trace_property`** — answers "everywhere this property is set, who wins?"
 
-Given a property name and a set of files, returns every rule that sets it, groups competing rules that target overlapping selectors, and shows the full cascade chain for each group — with resolved variable values included. Use this to understand the blast radius of a change before making it.
+Given a property name and a set of files, returns every rule that sets it, groups competing rules that target overlapping selectors, and shows the full cascade chain for each group — with resolved variable values included.
+
+**`impact_preview`** — answers "if I change this, what else breaks?"
+
+Given a selector, property, and optional new value, predicts the full blast radius of the change before it's made — showing which selectors will see a different value, which are shielded by higher specificity, which cascade relationships are uncertain, and which downstream rules are affected through CSS variable chains or property inheritance. Works without a browser.
+
+**`live_resolve`** — answers "what does the browser actually compute for this selector?"
+
+Queries a running Chromium browser via CDP and returns exact computed styles and matched rules. No heuristics, no confidence levels — the browser resolved it. Requires Chrome running with `--remote-debugging-port=9222`.
 
 ## Quick start
 
@@ -24,17 +32,10 @@ Given a property name and a set of files, returns every rule that sets it, group
 npm install -g @patrizzos/stylespeak
 ```
 
-Resolve what applies to a selector:
 ```bash
 stylespeak resolve ".btn.primary" src/styles/main.css
-stylespeak resolve "#header a" src/styles/base.css src/styles/header.css
-stylespeak resolve ".card-title" --projectRoot src/styles
-```
-
-Trace a property across files:
-```bash
-stylespeak trace "color" src/styles/main.css
-stylespeak trace "background-color" --projectRoot src/styles
+stylespeak trace "color" --projectRoot src/styles
+stylespeak impact ".btn" "background-color" src/styles/main.css --newValue "#ff0000"
 ```
 
 ### As an MCP server
@@ -55,8 +56,57 @@ Add to your MCP client config (Cursor: `.cursor/mcp.json`, VS Code: `.vscode/mcp
 Once connected, agents can call:
 - `resolve_styles({ selector, files, projectRoot, componentFiles? })`
 - `trace_property({ property, files, projectRoot })`
+- `impact_preview({ selector, property, newValue?, files, projectRoot })`
+- `live_resolve({ selector, port?, tabUrl? })`
 
 ## Example output
+
+### impact_preview
+
+```bash
+stylespeak impact ".btn" "background-color" src/styles/buttons.css --newValue "#ff0000"
+```
+
+```json
+{
+  "change": {
+    "selector": ".btn",
+    "property": "background-color",
+    "currentValue": "var(--color-primary)",
+    "newValue": "#ff0000"
+  },
+  "blastRadius": {
+    "total": 3,
+    "valueChanges": 1,
+    "shielded": 1,
+    "risks": 0,
+    "variableDownstream": 0,
+    "inheritanceDownstream": 1
+  },
+  "riskLevel": "low",
+  "safeToChange": true,
+  "impacts": [
+    {
+      "type": "value-change",
+      "affectedSelector": ".btn",
+      "currentValue": "var(--color-primary)",
+      "newValue": "#ff0000",
+      "confidence": "certain"
+    },
+    {
+      "type": "shielded",
+      "affectedSelector": ".btn.primary",
+      "shieldingValue": "darkblue",
+      "confidence": "certain",
+      "reason": ".btn.primary has higher specificity — elements with both classes won't be affected"
+    }
+  ],
+  "summary": "1 selector will see a different value, 1 selector is shielded by higher specificity.",
+  "agentNote": "Change appears safe to make. Shielded selectors are safe — higher-specificity rules protect those elements."
+}
+```
+
+### resolve_styles
 
 ```bash
 stylespeak resolve ".btn" src/styles/buttons.css
@@ -64,149 +114,103 @@ stylespeak resolve ".btn" src/styles/buttons.css
 
 ```json
 {
-  "query": { "selector": ".btn", "filesAnalyzed": ["buttons.css"] },
   "properties": {
     "background-color": {
       "winner": {
         "value": "var(--color-primary)",
         "resolvedValue": "#2563eb",
         "variableChain": ["--color-primary → #2563eb"],
-        "conditionalValues": [
-          {
-            "mediaContext": "@media (prefers-color-scheme: dark)",
-            "resolvedValue": "#93c5fd"
-          }
-        ],
         "selector": ".btn",
-        "specificity": "(0,0,1,0)",
-        "source": { "file": "buttons.css", "line": 4 }
+        "specificity": "(0,0,1,0)"
       },
-      "overridden": [],
       "confidence": "certain"
     }
   },
-  "variables": {
-    "--color-primary": {
-      "value": "#2563eb",
-      "resolvedValue": "#2563eb",
-      "selector": ":root"
-    }
-  },
-  "summary": "Found 4 properties applying to \".btn\" from 2 matched rule(s).",
-  "agentNote": "2 properties are certain. 2 properties use CSS custom properties — resolved values shown alongside raw var() references."
+  "variables": { "--color-primary": { "value": "#2563eb", "selector": ":root" } }
 }
 ```
 
 ## Confidence levels
 
-Since stylespeak performs static analysis without a real DOM, every resolved property carries a confidence level:
-
 | Level | Meaning |
 |---|---|
 | `certain` | Exact selector match — rule definitively applies |
 | `likely` | Rule tokens are a subset of the queried selector — applies in most cases |
-| `possible` | Combinator rule (e.g. `.sidebar .btn`) — depends on DOM ancestry, unknown without rendering |
-
-An agent should treat `certain` and `likely` results as ground truth, and `possible` results as conditional — they may apply depending on where the element lives in the DOM.
+| `possible` | Combinator rule — depends on DOM ancestry, unknown without rendering |
+| `exact` | Returned by `live_resolve` only — browser-resolved, no heuristics |
 
 ## CSS custom property resolution
 
-As of v0.2, stylespeak fully resolves CSS custom properties (`var()`) in all output. For every value that references a variable, the response includes:
+As of v0.2, stylespeak fully resolves CSS custom properties (`var()`) in all output:
 
 - `value` — the raw value as written (`var(--color-primary)`)
 - `resolvedValue` — the actual resolved value (`#2563eb`)
 - `variableChain` — the full resolution path, including chained variables
 - `conditionalValues` — media-context overrides where the variable resolves differently
 
-A top-level `variables` map in every response shows all custom properties found across the analyzed files, their resolved values, and any scoped or media-context overrides.
-
-Supported resolution features:
-- Simple: `var(--name)`
-- Fallback: `var(--name, fallback-value)`
-- Nested fallback: `var(--name, var(--other, default))`
-- Chained: `--a: var(--b)` → resolves `--b` transitively
-- Scoped: element-scoped variables override `:root` for matching selectors
-- Media-context: `@media` overrides surfaced as `conditionalValues`
-- Circular reference protection (max depth 10)
-
-## Use cases
-
-- **Before editing styles** — call `resolve_styles` to understand the full cascade context first
-- **Before changing a property** — call `trace_property` to see the blast radius across all files
-- **Debugging "why isn't my CSS working"** — trace the property to find the higher-specificity rule that's winning
-- **Understanding CSS variables** — see exactly what a `var()` resolves to, including dark mode and responsive overrides
-- **Style audits** — run across a project directory to map what's actually applying where
-
-## CLI options
-
-Both commands accept:
-- One or more file paths as positional arguments
-- `--projectRoot <dir>` to analyze all CSS/SCSS files in a directory recursively
-
-```bash
-stylespeak resolve ".btn" src/main.css src/components.css
-stylespeak trace "padding" --projectRoot src/styles
-```
+Supported: simple, fallback, nested fallback, chained, scoped, media-context, circular reference protection.
 
 ## How it pairs with stylesafe
 
 **stylesafe** catches problems in your CSS — conflicts, dead rules, Tailwind clashes — before they ship.
 
-**stylespeak** explains your CSS — resolving cascade, tracing properties, resolving variables, mapping what applies and why — so agents understand before they act.
+**stylespeak** explains your CSS — resolving cascade, tracing properties, predicting impact, resolving variables — so agents understand before they act.
 
 Use stylesafe as a post-edit check. Use stylespeak as a pre-edit consultation. Together they give AI coding agents a complete feedback loop on styles.
 
-## GitHub Actions
+## Live browser inspection
 
-```yaml
-name: style check
+`live_resolve` requires a Chromium browser running with remote debugging enabled:
 
-on: [pull_request]
+```bash
+# Windows
+chrome.exe --remote-debugging-port=9222
 
-jobs:
-  stylespeak:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install -g @patrizzos/stylespeak
-      - run: stylespeak trace "color" --projectRoot src/styles
+# macOS
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+
+# Linux
+google-chrome --remote-debugging-port=9222
 ```
 
-## Architecture
-
-```
-src/
-  cssParser.js            — dependency-free CSS tokenizer with SCSS nesting support (v0.3)
-  specificity.js          — standard (id, class, type) specificity calculator
-  cssomBuilder.js         — builds in-memory cascade model from multiple files
-  selectorMatcher.js      — heuristic selector matching with confidence levels
-  variableResolver.js     — CSS custom property resolution (v0.2)
-  cssModulesAnalyzer.js   — CSS Modules local scope detection and tagging (v0.3)
-  scssNestingExpander.js  — SCSS nesting pre-processor (v0.3)
-  astComponentGraph.js    — AST component graph for graph-aware matching (v0.3)
-  resolveStyles.js        — resolve_styles tool implementation
-  traceProperty.js        — trace_property tool implementation
-  server.js               — MCP server (stdio JSON-RPC) + CLI entry point
-```
-
-Zero external dependencies. Requires Node.js 18+.
+> **Security note:** Never run `--remote-debugging-port` on a machine exposed to untrusted networks or in production. This flag opens a local API that any process on the machine can connect to.
 
 ## File format support
 
 | Format | Support level |
 |---|---|
 | `.css` | Full |
-| `.scss` | Full — nesting, `&` references, `@media` passthrough (v0.3) |
-| `.module.css` / `.module.scss` | Full — locally scoped classes detected and tagged (v0.3) |
-| styled-components / Emotion | Not supported — dynamic runtime styles cannot be statically analyzed |
-| vanilla-extract / Linaria / StyleX | Fully supported via compiled CSS output — point stylespeak at the build output |
-| CSS-in-JS (object syntax) | Not supported (post v1.0 roadmap) |
+| `.scss` | Full — nesting, `&` references, `@media` passthrough |
+| `.module.css` / `.module.scss` | Full — locally scoped classes detected and tagged |
+| vanilla-extract / Linaria / StyleX | Supported via compiled CSS output |
+| styled-components / Emotion | Not supported — dynamic runtime styles |
+| CSS-in-JS object syntax | Not supported (post v1.0 roadmap) |
+
+## Architecture
+
+```
+src/
+  cssParser.js            — CSS tokenizer with SCSS nesting support
+  specificity.js          — standard (id, class, type) specificity calculator
+  cssomBuilder.js         — in-memory cascade model builder
+  selectorMatcher.js      — heuristic selector matching with confidence levels
+  variableResolver.js     — CSS custom property resolution
+  cssModulesAnalyzer.js   — CSS Modules local scope detection
+  scssNestingExpander.js  — SCSS nesting pre-processor
+  astComponentGraph.js    — AST component graph for graph-aware matching
+  resolveStyles.js        — resolve_styles tool
+  traceProperty.js        — trace_property tool
+  impactPreview.js        — impact_preview tool
+  cdpBridge.js            — Chrome DevTools Protocol WebSocket client
+  liveResolve.js          — live_resolve tool
+  server.js               — MCP server (stdio JSON-RPC) + CLI entry point
+```
+
+Zero external dependencies. Requires Node.js 21+.
 
 ## Roadmap
 
-- **v0.2** ✅ — CSS custom property resolution (simple, chained, fallback, scoped, media-context)
-- **v0.3** ✅ — SCSS nesting support, CSS Modules local scope awareness, AST component graph analysis
-- **v1.0** ✅ — Chrome DevTools Protocol integration for live cascade resolution against a running browser
+- **v0.2** ✅ — CSS custom property resolution
+- **v0.3** ✅ — SCSS nesting, CSS Modules scope awareness, AST component graph
+- **v1.0** ✅ — Chrome DevTools Protocol live resolution
+- **v1.1** ✅ — impact_preview: blast radius prediction before making a change
