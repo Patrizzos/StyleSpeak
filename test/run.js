@@ -242,6 +242,48 @@ async function run() {
   const noPropertyImpact = impactPreview({ selector: '.btn', files: fixtures });
   assert.ok(noPropertyImpact.error, 'should error when property missing');
 
+  // ── style_manifest ────────────────────────────────────────────────
+  const { styleManifest } = require('../src/styleManifest');
+
+  const manifest = styleManifest({ files: fixtures });
+  assert.ok(!manifest.error, 'style_manifest should not error');
+  assert.ok(manifest.meta, 'should return meta');
+  assert.ok(manifest.selectors, 'should return selectors');
+  assert.ok(manifest.properties, 'should return properties');
+  assert.ok(manifest.variables !== undefined, 'should return variables');
+  assert.ok(manifest.riskHotspots, 'should return riskHotspots');
+  assert.ok(manifest.files, 'should return files');
+  assert.ok(manifest.agentGuide, 'should return agentGuide');
+
+  // selector index should contain expected selectors from fixtures
+  assert.ok(manifest.selectors['.btn'], 'selector index should contain .btn');
+  assert.ok(manifest.selectors['.btn'].properties.length > 0, '.btn should have properties listed');
+  assert.ok(manifest.selectors['.btn'].specificity, '.btn should have specificity');
+
+  // property index should only include multi-rule properties
+  if (manifest.properties['color']) {
+    assert.ok(manifest.properties['color'].totalRules > 1, 'multi-rule properties should have totalRules > 1');
+  }
+
+  // meta should be accurate
+  assert.ok(manifest.meta.selectorCount > 0, 'selectorCount should be > 0');
+  assert.ok(manifest.meta.fileCount === fixtures.length, 'fileCount should match input');
+
+  // variable manifest from variable fixture
+  const varFixtureManifest = styleManifest({ files: [path.join(__dirname, 'fixtures', 'variables.css')] });
+  assert.ok(Object.keys(varFixtureManifest.variables).length > 0, 'variable manifest should include variables');
+  assert.ok(varFixtureManifest.variables['--color-primary'], 'should include --color-primary');
+  assert.ok(varFixtureManifest.variables['--color-primary'].resolvedValue, 'should include resolvedValue for variable');
+
+  // maxSelectors limit
+  const limitedManifest = styleManifest({ files: fixtures, maxSelectors: 1 });
+  assert.ok(Object.keys(limitedManifest.selectors).length <= 1, 'maxSelectors should limit output');
+  assert.ok(limitedManifest.meta.truncated === true || Object.keys(limitedManifest.selectors).length <= 1, 'should flag truncation when limited');
+
+  // no files should error
+  const noFiles = styleManifest({});
+  assert.ok(noFiles.error, 'should error when no files provided');
+
   console.log('stylespeak regression checks passed');
 }
 

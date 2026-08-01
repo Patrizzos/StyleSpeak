@@ -7,10 +7,12 @@
  *   trace_property  — every rule setting a property, competing groups, blast radius
  *   live_resolve    — exact resolution via Chrome DevTools Protocol
  *   impact_preview  — blast radius of a proposed CSS change before making it
+ *   style_manifest  — compressed project-wide CSS knowledge for agent context
  *
  * CLI mode: node server.js resolve .btn src/styles/main.css
  *           node server.js trace color --projectRoot src
  *           node server.js impact .btn background-color src/styles/main.css
+ *           node server.js manifest --projectRoot src/styles
  */
 
 const readline = require('readline');
@@ -18,6 +20,7 @@ const { resolveStyles } = require('./resolveStyles');
 const { traceProperty } = require('./traceProperty');
 const { liveResolve } = require('./liveResolve');
 const { impactPreview } = require('./impactPreview');
+const { styleManifest } = require('./styleManifest');
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -146,6 +149,35 @@ const TOOLS = [
       required: ['selector', 'property'],
     },
   },
+  {
+    name: 'style_manifest',
+    description:
+      'Builds a compressed, structured summary of a project\'s entire CSS knowledge — ' +
+      'selectors, properties, variables, competition groups, and risk hotspots — that an agent ' +
+      'can load ONCE at the start of a session and keep in context. ' +
+      'Use this at the beginning of any CSS editing task to understand the landscape before ' +
+      'querying individual selectors. Much faster than running resolve_styles on every selector. ' +
+      'Follow up with resolve_styles, trace_property, or impact_preview for deep analysis of ' +
+      'specific selectors surfaced in the manifest.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Absolute paths to CSS/SCSS files to analyze.',
+        },
+        projectRoot: {
+          type: 'string',
+          description: 'Path to project root. All CSS/SCSS files discovered recursively.',
+        },
+        maxSelectors: {
+          type: 'number',
+          description: 'Maximum selectors to include (default: 200). Hotspot selectors are prioritised when truncating.',
+        },
+      },
+    },
+  },
 ];
 
 // ─── MCP server ──────────────────────────────────────────────────────────────
@@ -159,6 +191,7 @@ function runTool(name, args) {
   if (name === 'trace_property') return traceProperty(args || {});
   if (name === 'live_resolve') return liveResolve(args || {});
   if (name === 'impact_preview') return impactPreview(args || {});
+  if (name === 'style_manifest') return styleManifest(args || {});
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -171,7 +204,7 @@ function handleRequest(req) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'stylespeak', version: '1.1.0' },
+        serverInfo: { name: 'stylespeak', version: '1.2.0' },
       },
     });
   }
@@ -213,11 +246,13 @@ function runCLI(args) {
     console.log('Usage:');
     console.log('  node server.js resolve <selector> [file...] [--projectRoot <dir>]');
     console.log('  node server.js trace <property> [file...] [--projectRoot <dir>]');
-    console.log('  node server.js impact <selector> <property> [file...] [--projectRoot <dir>] [--newValue <value>]\n');
+    console.log('  node server.js impact <selector> <property> [file...] [--projectRoot <dir>] [--newValue <value>]');
+    console.log('  node server.js manifest [file...] [--projectRoot <dir>] [--maxSelectors <n>]\n');
     console.log('Examples:');
     console.log('  node server.js resolve ".btn.primary" src/styles/main.css');
     console.log('  node server.js trace "color" --projectRoot src/styles');
     console.log('  node server.js impact ".btn" "background-color" src/styles/main.css --newValue "#ff0000"');
+    console.log('  node server.js manifest --projectRoot src/styles');
     return;
   }
 
@@ -243,6 +278,10 @@ function runCLI(args) {
     const property = fileArgs[1];
     const files = fileArgs.slice(2);
     result = impactPreview({ selector, property, newValue, files, projectRoot });
+  } else if (command === 'manifest') {
+    const maxSelectorsIdx = args.indexOf('--maxSelectors');
+    const maxSelectors = maxSelectorsIdx !== -1 ? parseInt(args[maxSelectorsIdx + 1]) : 200;
+    result = styleManifest({ files: fileArgs, projectRoot, maxSelectors });
   } else {
     console.error('Unknown command: ' + command + '. Use resolve, trace, or impact.');
     process.exit(1);

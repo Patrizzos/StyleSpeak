@@ -20,6 +20,10 @@ Given a property name and a set of files, returns every rule that sets it, group
 
 Given a selector, property, and optional new value, predicts the full blast radius of the change before it's made — showing which selectors will see a different value, which are shielded by higher specificity, which cascade relationships are uncertain, and which downstream rules are affected through CSS variable chains or property inheritance. Works without a browser.
 
+**`style_manifest`** — answers "what does this entire project's CSS look like at a glance?"
+
+Builds a compressed, structured summary of a project's entire CSS knowledge — selectors, properties, variables, competition groups, and risk hotspots — that an agent can load once at the start of a session and keep in context instead of repeatedly querying individual files.
+
 **`live_resolve`** — answers "what does the browser actually compute for this selector?"
 
 Queries a running Chromium browser via CDP and returns exact computed styles and matched rules. No heuristics, no confidence levels — the browser resolved it. Requires Chrome running with `--remote-debugging-port=9222`.
@@ -36,6 +40,7 @@ npm install -g @patrizzos/stylespeak
 stylespeak resolve ".btn.primary" src/styles/main.css
 stylespeak trace "color" --projectRoot src/styles
 stylespeak impact ".btn" "background-color" src/styles/main.css --newValue "#ff0000"
+stylespeak manifest --projectRoot src/styles
 ```
 
 ### As an MCP server
@@ -57,6 +62,7 @@ Once connected, agents can call:
 - `resolve_styles({ selector, files, projectRoot, componentFiles? })`
 - `trace_property({ property, files, projectRoot })`
 - `impact_preview({ selector, property, newValue?, files, projectRoot })`
+- `style_manifest({ files?, projectRoot?, maxSelectors? })`
 - `live_resolve({ selector, port?, tabUrl? })`
 
 ## Example output
@@ -201,6 +207,7 @@ src/
   resolveStyles.js        — resolve_styles tool
   traceProperty.js        — trace_property tool
   impactPreview.js        — impact_preview tool
+  styleManifest.js        — style_manifest project-wide knowledge builder
   cdpBridge.js            — Chrome DevTools Protocol WebSocket client
   liveResolve.js          — live_resolve tool
   server.js               — MCP server (stdio JSON-RPC) + CLI entry point
@@ -214,3 +221,4 @@ Zero external dependencies. Requires Node.js 21+.
 - **v0.3** ✅ — SCSS nesting, CSS Modules scope awareness, AST component graph
 - **v1.0** ✅ — Chrome DevTools Protocol live resolution
 - **v1.1** ✅ — impact_preview: blast radius prediction before making a change
+- **v1.2** ✅ — style_manifest: compressed project-wide CSS knowledge for agent context
